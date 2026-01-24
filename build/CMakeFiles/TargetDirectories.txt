@@ -1,0 +1,3 @@
+/home/devansh/repos/nexus/build/CMakeFiles/nexus.dir
+/home/devansh/repos/nexus/build/CMakeFiles/edit_cache.dir
+/home/devansh/repos/nexus/build/CMakeFiles/rebuild_cache.dir

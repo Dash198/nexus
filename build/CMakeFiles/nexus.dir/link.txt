@@ -1,0 +1,1 @@
+/usr/sbin/c++ -Wl,--dependency-file=CMakeFiles/nexus.dir/link.d CMakeFiles/nexus.dir/src/main.cpp.o -o nexus  -lfuse3 -lpthread
