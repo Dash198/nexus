@@ -124,7 +124,7 @@ int nexus_open(const char *path, struct fuse_file_info *fi){
     std::string final_path = source + path;
 
     // Attempt to open and attach a file descriptor to the directory in read-only mode (writing to be handled later)
-    int fd = open(final_path.c_str(), O_RDONLY);
+    int fd = open(final_path.c_str(), fi->flags);
 
     // Error handling
     if(fd==-1){
@@ -186,14 +186,115 @@ int nexus_release(const char *path, struct fuse_file_info *fi){
     return 0;
 }
 
+int nexus_create(const char *path, mode_t mode, struct fuse_file_info *fi){
+    /*
+     * Attaches a file descriptor to the specified file for writing.
+     *
+     * Args:
+     *  path: Path to the file
+     *  mode: Mode to open the descriptor
+     *  fi: File info struct
+     */
+
+    // Set up the source
+    std::string source = "/home/devansh/repos/nexus/nexus_data";
+    std::string final_path = source + path;
+
+    // Attemp to open and attach a file descriptor to the file in write mode
+    int fd = open(final_path.c_str(), fi->flags, mode);
+
+    // Error handling
+    if(fd == -1){
+        return -errno;
+    }
+
+    // Pass the descriptor
+    fi->fh = fd;
+    return 0;
+}
+
+int nexus_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
+    /*
+     * Write to a given file using a file descriptor
+     *
+     * Args:
+     *  path: Path of the file
+     *  buf: Buffer to write to
+     *  size: Number of bytes to write
+     *  offset: Offset to write from
+     *  fi: File info struct
+     */
+
+    // Get the file descriptor
+    int fd = fi->fh;
+
+    // Error handling for invalid fd
+    if(fd == -1){
+        return -errno;
+    }
+
+    // Write using pwrite()
+    int res = pwrite(fd, buf, size, offset);
+
+    // Handle invalid writing
+    if(res == -1){
+        res = -errno;
+    }
+
+    return res;
+}
+// 1. Delete a file (rm file.txt)
+int nexus_unlink(const char *path) {
+    std::string source = "/home/devansh/repos/nexus/nexus_data";
+    std::string final_path = source + path;
+
+    int res = unlink(final_path.c_str());
+
+    if (res == -1) {
+        return -errno;
+    }
+    return 0;
+}
+
+// 2. Create a directory (mkdir photos)
+int nexus_mkdir(const char *path, mode_t mode) {
+    std::string source = "/home/devansh/repos/nexus/nexus_data";
+    std::string final_path = source + path;
+
+    // mkdir takes the path and the permissions (mode)
+    int res = mkdir(final_path.c_str(), mode);
+
+    if (res == -1) {
+        return -errno;
+    }
+    return 0;
+}
+
+// 3. Delete a directory (rmdir photos)
+int nexus_rmdir(const char *path) {
+    std::string source = "/home/devansh/repos/nexus/nexus_data";
+    std::string final_path = source + path;
+
+    int res = rmdir(final_path.c_str());
+
+    if (res == -1) {
+        return -errno;
+    }
+    return 0;
+}
 // The "Employee Handbook" - Defines what function to run for each request and what all we are capable of.
 static struct fuse_operations nexus_oper = {
     .getattr = nexus_getattr,
+    .mkdir = nexus_mkdir,
+    .unlink = nexus_unlink,
+    .rmdir = nexus_rmdir,
     .open = nexus_open,
     .read = nexus_read,
+    .write = nexus_write,
     .release = nexus_release,
     .readdir = nexus_readdir,
     .init = nexus_init,
+    .create = nexus_create,
 };
 
 int main(int argc, char *argv[]) {
