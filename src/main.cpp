@@ -6,10 +6,11 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <string.h>
+#include <string>
 #include <errno.h>
 #include <iostream>
 #include <dirent.h>
+#include <cstring>
 
 // Run once, when the fileesystem is mounted.
 static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
@@ -29,6 +30,7 @@ static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
 int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi){
     /*
      * Get attributes about a file.
+     * Now.. we make it accept ghost or non-existent directories.
      *
      * Args:
      *  path: Path the user is asking about, relative to the mount point.
@@ -39,6 +41,20 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
      *  0: Success
      *  -ENOENT: Negative Error, No Entry (Failure)
      */
+
+     // We'll try to catch a non-existent directory hello
+     if(std::string(path)=="/hello"){
+        stbuf->st_mode = S_IFREG | 0444;
+        stbuf->st_nlink = 1;
+        stbuf->st_size = 20;
+        stbuf->st_uid = getuid();
+        stbuf->st_gid = getgid();
+        time_t now = time(NULL);
+        stbuf->st_atime = now;
+        stbuf->st_mtime = now;
+        stbuf->st_ctime = now;
+        return 0;
+     }
 
      // Source directory to mirror
      std::string source = "/home/devansh/repos/nexus/nexus_data";
@@ -64,6 +80,7 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
 int nexus_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags){
     /*
      * Read the contents of a directory
+     * Now.. we try to add in ghost directories.
      *
      * Args:
      *  path: Path to the directory we want to read (relative to filesystem)
@@ -74,6 +91,10 @@ int nexus_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t off
      *  flags: Any extra instructions from the kernel, ignore for now.
      */
 
+    // Special case for root dir
+    if(std::string(path) == "/"){
+        filler(buf, "hello", NULL, 0, (fuse_fill_dir_flags)0);
+    }
     // Setup the source path
     std::string source = "/home/devansh/repos/nexus/nexus_data";
     std::string final_path = source+path;
@@ -119,6 +140,13 @@ int nexus_open(const char *path, struct fuse_file_info *fi){
      *  fi: File info struct, used here :)
      */
 
+
+    // Let us now try to intercept a dir "hello"
+    if(std::string(path)=="/hello"){
+        // Just let the kernel pass
+        return 0;
+    }
+
     // Set up the source
     std::string source = "/home/devansh/repos/nexus/nexus_data";
     std::string final_path = source + path;
@@ -148,6 +176,20 @@ int nexus_read(const char *path, char *buff, size_t size, off_t offset, struct f
      *  offset: Offset to start reading from
      *  fi: File info struct, contains attached file descriptor
      */
+
+    // Intercepting non-existent directory hello
+    if(std::string(path)=="/hello"){
+        std::string msg = "hello from nexus :)\n";
+
+        if(offset >= msg.length()){
+            return 0;
+        }
+
+        size_t bytes = std::min(size,(size_t)(msg.length()-offset));
+        memcpy(buff, msg.c_str()+offset, bytes);
+
+        return bytes;
+    }
 
     // Extract the file descriptor
     int fd = fi->fh;
@@ -243,43 +285,73 @@ int nexus_write(const char *path, const char *buf, size_t size, off_t offset, st
 
     return res;
 }
-// 1. Delete a file (rm file.txt)
 int nexus_unlink(const char *path) {
+    /*
+     * Delete a file from the filesystem
+     *
+     * Args:
+     *  path: Path of the file
+     */
+
+    // Get the source.
     std::string source = "/home/devansh/repos/nexus/nexus_data";
     std::string final_path = source + path;
 
+    // Attempt to delete the file.
     int res = unlink(final_path.c_str());
 
+    // Handle error.
     if (res == -1) {
         return -errno;
     }
+
     return 0;
 }
 
-// 2. Create a directory (mkdir photos)
 int nexus_mkdir(const char *path, mode_t mode) {
+    /*
+     * Create a directory
+     *
+     * Args:
+     *  path: Path of the directory
+     *  mode: Creation mode/Permissions
+     */
+
+    // Construct the actual path
     std::string source = "/home/devansh/repos/nexus/nexus_data";
     std::string final_path = source + path;
 
     // mkdir takes the path and the permissions (mode)
     int res = mkdir(final_path.c_str(), mode);
 
+    // Handle errors
     if (res == -1) {
         return -errno;
     }
+
     return 0;
 }
 
-// 3. Delete a directory (rmdir photos)
 int nexus_rmdir(const char *path) {
+    /*
+     * Delete a directory from the filesystem
+     *
+     * Args:
+     *  path: Path to the directory
+     */
+
+    // Create the actual path
     std::string source = "/home/devansh/repos/nexus/nexus_data";
     std::string final_path = source + path;
 
+    // Attempt to remove the directory
     int res = rmdir(final_path.c_str());
 
+    // Handle errors
     if (res == -1) {
         return -errno;
     }
+
     return 0;
 }
 // The "Employee Handbook" - Defines what function to run for each request and what all we are capable of.
