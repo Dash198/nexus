@@ -4,7 +4,7 @@
 # compile CXX with /usr/sbin/c++
 CXX_DEFINES = -DFUSE_USE_VERSION=31 -D_FILE_OFFSET_BITS=64
 
-CXX_INCLUDES = -I/usr/include/fuse3
+CXX_INCLUDES = -I/usr/include/fuse3 -I/home/devansh/repos/nexus/third_party/onnxruntime/include
 
-CXX_FLAGS = -std=gnu++17 -I/usr/include/fuse3
+CXX_FLAGS = -std=gnu++20 -I/usr/include/fuse3
 

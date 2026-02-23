@@ -3,6 +3,7 @@ nexus: \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/crti.o \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/crtbeginS.o \
   CMakeFiles/nexus.dir/src/main.cpp.o \
+  /home/devansh/repos/nexus/third_party/onnxruntime/lib/libonnxruntime.so \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/libfuse3.so \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/libpthread.a \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/libstdc++.so \
@@ -31,6 +32,12 @@ nexus: \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/libgcc.a \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/crtendS.o \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/crtn.o \
+  /usr/lib32/libdl.so.2 \
+  /usr/lib/libdl.so.2 \
+  /usr/lib32/librt.so.1 \
+  /usr/lib/librt.so.1 \
+  /usr/lib32/libpthread.so.0 \
+  /usr/lib/libpthread.so.0 \
   /usr/lib/ld-linux-x86-64.so.2
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/Scrt1.o:
@@ -40,6 +47,8 @@ nexus: \
 /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/crtbeginS.o:
 
 CMakeFiles/nexus.dir/src/main.cpp.o:
+
+/home/devansh/repos/nexus/third_party/onnxruntime/lib/libonnxruntime.so:
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/libfuse3.so:
 
@@ -96,5 +105,17 @@ CMakeFiles/nexus.dir/src/main.cpp.o:
 /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/crtendS.o:
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/crtn.o:
+
+/usr/lib32/libdl.so.2:
+
+/usr/lib/libdl.so.2:
+
+/usr/lib32/librt.so.1:
+
+/usr/lib/librt.so.1:
+
+/usr/lib32/libpthread.so.0:
+
+/usr/lib/libpthread.so.0:
 
 /usr/lib/ld-linux-x86-64.so.2:

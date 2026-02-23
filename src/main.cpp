@@ -11,6 +11,38 @@
 #include <iostream>
 #include <dirent.h>
 #include <cstring>
+#include <unordered_map>
+#include <ctime>
+#include <onnxruntime_cxx_api.h>
+
+std::unordered_map<std::string, std::string> global_map = {
+    {"/hello", "hello from nexus :)\n"},
+    {"/status", "NEXUS Core: ONLINE\n"},
+    {"/time", "actually time size will come from our cache, this is just a placeholder :)"}
+};
+
+std::unordered_map<std::string, std::string> dynamic_cache;
+
+// Helper function to generate system time.
+std::string generate_time_string(){
+    time_t rawtime;
+    struct tm * timeinfo;
+    char buffer[80];
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime); // This will automatically grab your local IST timezone
+
+    // Format the time and add the crucial newline character
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S\n", timeinfo);
+
+    return std::string(buffer);
+}
+
+// Generates search results
+std::string generate_search_result(std::string query){
+    // Dummy placeholder for now
+    return "Simulated results for query " + query + "\n";
+}
 
 // Run once, when the fileesystem is mounted.
 static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
@@ -43,17 +75,47 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
      */
 
      // We'll try to catch a non-existent directory hello
-     if(std::string(path)=="/hello"){
+     if(global_map.find(std::string(path))!=global_map.end()){
         stbuf->st_mode = S_IFREG | 0444;
         stbuf->st_nlink = 1;
-        stbuf->st_size = 20;
+        stbuf->st_size = global_map[std::string(path)].length();
         stbuf->st_uid = getuid();
         stbuf->st_gid = getgid();
         time_t now = time(NULL);
         stbuf->st_atime = now;
         stbuf->st_mtime = now;
         stbuf->st_ctime = now;
+        if(std::string(path) == "/time"){
+            dynamic_cache[path] = generate_time_string();
+            stbuf->st_size = dynamic_cache[path].length();
+        }
         return 0;
+     }
+
+     std::string path_str = std::string(path);
+     if (path_str == "/search") {
+         stbuf->st_mode = S_IFDIR | 0755; // S_IFDIR means "I am a directory!"
+         stbuf->st_nlink = 2;             // Directories usually have 2 links
+         stbuf->st_uid = getuid();
+         stbuf->st_gid = getgid();
+         time_t now = time(NULL);
+         stbuf->st_atime = now;
+         stbuf->st_mtime = now;
+         stbuf->st_ctime = now;
+         return 0;
+     }
+     if(path_str.starts_with("/search/") && path_str.length()>8){
+         stbuf->st_mode = S_IFREG | 0444;
+         stbuf->st_nlink = 1;
+         stbuf->st_uid = getuid();
+         stbuf->st_gid = getgid();
+         time_t now = time(NULL);
+         stbuf->st_atime = now;
+         stbuf->st_mtime = now;
+         stbuf->st_ctime = now;
+         dynamic_cache[path] = generate_search_result(path_str.substr(8, path_str.length()-8));
+         stbuf->st_size = dynamic_cache[path].length();
+         return 0;
      }
 
      // Source directory to mirror
@@ -93,7 +155,8 @@ int nexus_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t off
 
     // Special case for root dir
     if(std::string(path) == "/"){
-        filler(buf, "hello", NULL, 0, (fuse_fill_dir_flags)0);
+        for (const auto& pair: global_map)
+            filler(buf, (pair.first.substr(1, pair.first.length()-1)).c_str(), NULL, 0, (fuse_fill_dir_flags)0);
     }
     // Setup the source path
     std::string source = "/home/devansh/repos/nexus/nexus_data";
@@ -142,11 +205,14 @@ int nexus_open(const char *path, struct fuse_file_info *fi){
 
 
     // Let us now try to intercept a dir "hello"
-    if(std::string(path)=="/hello"){
+    if(global_map.find(std::string(path))!=global_map.end()){
         // Just let the kernel pass
         return 0;
     }
 
+    if(std::string(path).starts_with("/search/") && std::string(path).size()>8){
+        return 0;
+    }
     // Set up the source
     std::string source = "/home/devansh/repos/nexus/nexus_data";
     std::string final_path = source + path;
@@ -178,14 +244,31 @@ int nexus_read(const char *path, char *buff, size_t size, off_t offset, struct f
      */
 
     // Intercepting non-existent directory hello
-    if(std::string(path)=="/hello"){
-        std::string msg = "hello from nexus :)\n";
+    if(global_map.find(std::string(path))!=global_map.end()){
+        std::string msg = global_map[std::string(path)];
+
+        if(std::string(path) == "/time"){
+            msg = dynamic_cache[path];
+        }
 
         if(offset >= msg.length()){
             return 0;
         }
 
         size_t bytes = std::min(size,(size_t)(msg.length()-offset));
+        memcpy(buff, msg.c_str()+offset, bytes);
+
+        return bytes;
+    }
+
+    std::string path_str = std::string(path);
+    if(path_str.starts_with("/search/") && path_str.length()>8){
+        std::string msg = dynamic_cache[path];
+        if(offset >= msg.length()){
+            return 0;
+        }
+
+        size_t bytes = std::min(size, (size_t)(msg.length()-offset));
         memcpy(buff, msg.c_str()+offset, bytes);
 
         return bytes;

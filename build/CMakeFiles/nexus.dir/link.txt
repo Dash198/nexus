@@ -1,1 +1,1 @@
-/usr/sbin/c++ -Wl,--dependency-file=CMakeFiles/nexus.dir/link.d CMakeFiles/nexus.dir/src/main.cpp.o -o nexus  -lfuse3 -lpthread
+/usr/sbin/c++ -Wl,--dependency-file=CMakeFiles/nexus.dir/link.d CMakeFiles/nexus.dir/src/main.cpp.o -o nexus   -L/home/devansh/repos/nexus/third_party/onnxruntime/lib  -Wl,-rpath,/home/devansh/repos/nexus/third_party/onnxruntime/lib -lonnxruntime -lfuse3 -lpthread
