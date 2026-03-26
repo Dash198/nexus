@@ -14,13 +14,18 @@
 #include <unordered_map>
 #include <ctime>
 #include <onnxruntime_cxx_api.h>
+#include "embedder.hpp"
 
+// Global Map of some paths :)
 std::unordered_map<std::string, std::string> global_map = {
     {"/hello", "hello from nexus :)\n"},
     {"/status", "NEXUS Core: ONLINE\n"},
     {"/time", "actually time size will come from our cache, this is just a placeholder :)"}
 };
 
+ModelEngine* global_engine = nullptr;
+
+// Dynamic cache, stores ghost directories to generate search results for (only cat for now)
 std::unordered_map<std::string, std::string> dynamic_cache;
 
 // Helper function to generate system time.
@@ -44,7 +49,7 @@ std::string generate_search_result(std::string query){
     return "Simulated results for query " + query + "\n";
 }
 
-// Run once, when the fileesystem is mounted.
+// Run once, when the filesystem is mounted.
 static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
     /*
      * conn: connection information
@@ -56,6 +61,10 @@ static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
     // telling the Kernel: "If a user reads a file, you can keep a copy in RAM. Don't call me again for the same file 1 millisecond later."
     cfg->kernel_cache = 1;
     std::cout << "[NEXUS] Filesystem initialized!" << std::endl;
+
+    global_engine = new ModelEngine("/home/devansh/repos/nexus/models/all-MiniLM-L6-v2.onnx");
+    std::cout << "[NEXUS] AI Engine Booted!" << std::endl;
+
     return NULL;
 }
 
@@ -74,7 +83,7 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
      *  -ENOENT: Negative Error, No Entry (Failure)
      */
 
-     // We'll try to catch a non-existent directory hello
+     // We'll directly fill the stbuf for global mapped directories.
      if(global_map.find(std::string(path))!=global_map.end()){
         stbuf->st_mode = S_IFREG | 0444;
         stbuf->st_nlink = 1;
@@ -93,6 +102,8 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
      }
 
      std::string path_str = std::string(path);
+
+     // We'll check if the user is searching (non-existent directory) and fill the stbuf
      if (path_str == "/search") {
          stbuf->st_mode = S_IFDIR | 0755; // S_IFDIR means "I am a directory!"
          stbuf->st_nlink = 2;             // Directories usually have 2 links
@@ -104,6 +115,7 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
          stbuf->st_ctime = now;
          return 0;
      }
+     // For an actual search we generate the search result and fill the stbuf.
      if(path_str.starts_with("/search/") && path_str.length()>8){
          stbuf->st_mode = S_IFREG | 0444;
          stbuf->st_nlink = 1;
@@ -204,12 +216,13 @@ int nexus_open(const char *path, struct fuse_file_info *fi){
      */
 
 
-    // Let us now try to intercept a dir "hello"
+    // Let us now try to intercept any global mapped directories
     if(global_map.find(std::string(path))!=global_map.end()){
         // Just let the kernel pass
         return 0;
     }
 
+    // Similarly for anything tagged search
     if(std::string(path).starts_with("/search/") && std::string(path).size()>8){
         return 0;
     }
@@ -243,7 +256,7 @@ int nexus_read(const char *path, char *buff, size_t size, off_t offset, struct f
      *  fi: File info struct, contains attached file descriptor
      */
 
-    // Intercepting non-existent directory hello
+    // Intercepting non-existent directories
     if(global_map.find(std::string(path))!=global_map.end()){
         std::string msg = global_map[std::string(path)];
 
@@ -262,6 +275,8 @@ int nexus_read(const char *path, char *buff, size_t size, off_t offset, struct f
     }
 
     std::string path_str = std::string(path);
+
+    // Similar procedure for searching.
     if(path_str.starts_with("/search/") && path_str.length()>8){
         std::string msg = dynamic_cache[path];
         if(offset >= msg.length()){

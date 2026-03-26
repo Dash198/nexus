@@ -6,6 +6,12 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#pragma once
+
+struct Encoding {
+    std::vector<int64_t> input_ids;
+    std::vector<int64_t> attention_mask;
+};
 
 // Custom WordPiece Tokenizer
 class Tokenizer {
@@ -14,7 +20,7 @@ class Tokenizer {
   public:
   Tokenizer(){
     // Set up the file stream.
-    std::string vocab_path = "./vocab.txt";
+    std::string vocab_path = "/home/devansh/repos/nexus/src/tokenizer/vocab.txt";
     std::ifstream inFile(vocab_path);
 
     if(!inFile.is_open()){
@@ -26,11 +32,10 @@ class Tokenizer {
 
     // Load up the map (ignoring spl tokens for now)
     while(std::getline(inFile, line)){
+        if (!line.empty() && line.back() == '\r') line.pop_back();
         vocab[line] = idx;
         idx++;
     }
-
-
   }
 
   // Preprocess a given string before handing it over to the tokenizer
@@ -44,14 +49,15 @@ class Tokenizer {
       std::string token;
 
       while(std::getline(ss, token, ' ')){
-          parts.push_back(token);
+          if(!token.empty())
+              parts.push_back(token);
       }
 
       return parts;
   }
 
   // Encode a given string
-  std::vector<int64_t> encode(std::string s){
+  Encoding encode(std::string s){
       std::vector<std::string> tokens = preprocess(s);
       std::vector<int64_t> int_tokens;
 
@@ -91,7 +97,8 @@ class Tokenizer {
       }
 
       int_tokens.push_back(vocab["[SEP]"]);
-      return int_tokens;
+      std::vector<int64_t> attention_mask(int_tokens.size(), 1);
+      return {int_tokens, attention_mask};
   }
 
 };
