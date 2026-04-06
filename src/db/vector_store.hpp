@@ -89,7 +89,8 @@ public:
     void load_from_disk(){
         std::ifstream in_file("vector_store.bin", std::ios::in | std::ios::binary);
         if(!in_file.is_open()){
-            std::cerr << "[NEXUS] Error opening file for loading\n";
+            std::cout << "[NEXUS] No previous memory found. Starting fresh.\n";
+            return; // <--- This saves the daemon!
         }
 
         cache.clear();

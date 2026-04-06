@@ -14,7 +14,25 @@
 #include <unordered_map>
 #include <ctime>
 #include <onnxruntime_cxx_api.h>
+#include <vector>
+#include <fstream>
+#include <sstream>
+#include <algorithm>
+
 #include "embedder.hpp"
+#include "tokenizer/tokenizer.hpp"
+#include "db/vector_store.hpp"
+
+struct NexusCtxt{
+    Tokenizer* tokenizer;
+    ModelEngine* engine;
+    VectorStore* store;
+
+    std::string model_path = "/home/devansh/repos/nexus/models/all-MiniLM-L6-v2.onnx";
+};
+
+// Get AI context inside of any fuse function
+#define NEXUS_DATA ((NexusCtxt*) fuse_get_context()->private_data)
 
 // Global Map of some paths :)
 std::unordered_map<std::string, std::string> global_map = {
@@ -22,8 +40,6 @@ std::unordered_map<std::string, std::string> global_map = {
     {"/status", "NEXUS Core: ONLINE\n"},
     {"/time", "actually time size will come from our cache, this is just a placeholder :)"}
 };
-
-ModelEngine* global_engine = nullptr;
 
 // Dynamic cache, stores ghost directories to generate search results for (only cat for now)
 std::unordered_map<std::string, std::string> dynamic_cache;
@@ -45,8 +61,31 @@ std::string generate_time_string(){
 
 // Generates search results
 std::string generate_search_result(std::string query){
-    // Dummy placeholder for now
-    return "Simulated results for query " + query + "\n";
+
+    // Load the AI ctxt
+    struct NexusCtxt *ctxt = NEXUS_DATA;
+
+    std::replace(query.begin(), query.end(), '_', ' ');
+
+    std::stringstream ss;
+    ss << "Search Results:\n\n";
+
+    Encoding enc = ctxt->tokenizer->encode(query);
+    std::vector<float> embedding = ctxt->engine->generate_embedding(enc);
+
+    std::vector<std::string> results = ctxt->store->search(embedding, 5);
+
+    if(results.empty()){
+        ss << "No files indexed in memory\n";
+    }
+    else{
+        for(size_t i=0; i<results.size(); i++){
+            ss << " " << i+1 << ". " << results[i] << "\n";
+        }
+    }
+
+    ss << "\n";
+    return ss.str();
 }
 
 // Run once, when the filesystem is mounted.
@@ -62,10 +101,16 @@ static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
     cfg->kernel_cache = 1;
     std::cout << "[NEXUS] Filesystem initialized!" << std::endl;
 
-    global_engine = new ModelEngine("/home/devansh/repos/nexus/models/all-MiniLM-L6-v2.onnx");
+    // Initialize the AI components
+    struct NexusCtxt *ctxt = NEXUS_DATA;
+    ctxt->tokenizer = new Tokenizer();
+    ctxt->engine = new ModelEngine(ctxt->model_path);
+    ctxt->store = new VectorStore();
+    ctxt->store->load_from_disk();
+
     std::cout << "[NEXUS] AI Engine Booted!" << std::endl;
 
-    return NULL;
+    return NEXUS_DATA;
 }
 
 int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi){
@@ -125,7 +170,10 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
          stbuf->st_atime = now;
          stbuf->st_mtime = now;
          stbuf->st_ctime = now;
-         dynamic_cache[path] = generate_search_result(path_str.substr(8, path_str.length()-8));
+         if (dynamic_cache.find(path) == dynamic_cache.end()) {
+             dynamic_cache[path] = generate_search_result(path_str.substr(8));
+         }
+         stbuf->st_size = dynamic_cache[path].length();
          stbuf->st_size = dynamic_cache[path].length();
          return 0;
      }
@@ -318,11 +366,22 @@ int nexus_release(const char *path, struct fuse_file_info *fi){
      *  fi: Info about the file
      */
 
-     // Acknowledge the path but do not use it
-    (void) path;
-    // Close the file descriptor we opened
-    close(fi->fh);
+    (void) fi; // We don't even need the fd anymore!
+    struct NexusCtxt *ctxt = NEXUS_DATA;
 
+    std::string final_path = "/home/devansh/repos/nexus/nexus_data" + std::string(path);
+    std::ifstream inFile(final_path);
+    if (!inFile.is_open()) return 0;
+
+    std::stringstream buffer;
+    buffer << inFile.rdbuf();
+    std::string content = buffer.str();
+
+    if (!content.empty()) {
+        Encoding encoding = ctxt->tokenizer->encode(content);
+        std::vector<float> embedding = ctxt->engine->generate_embedding(encoding);
+        ctxt->store->upsert(path, embedding);
+    }
     return 0;
 }
 
@@ -383,6 +442,7 @@ int nexus_write(const char *path, const char *buf, size_t size, off_t offset, st
 
     return res;
 }
+
 int nexus_unlink(const char *path) {
     /*
      * Delete a file from the filesystem
@@ -390,6 +450,8 @@ int nexus_unlink(const char *path) {
      * Args:
      *  path: Path of the file
      */
+
+    struct NexusCtxt *ctxt = NEXUS_DATA;
 
     // Get the source.
     std::string source = "/home/devansh/repos/nexus/nexus_data";
@@ -402,6 +464,9 @@ int nexus_unlink(const char *path) {
     if (res == -1) {
         return -errno;
     }
+
+    // Remove the path from the vector store
+    ctxt->store->remove(path);
 
     return 0;
 }
@@ -468,6 +533,24 @@ static struct fuse_operations nexus_oper = {
 };
 
 int main(int argc, char *argv[]) {
-    // FIX: The second argument must be 'argv', not 'argc'
-    return fuse_main(argc, argv, &nexus_oper, NULL);
+    std::cout << "[NEXUS] Booting Daemon.." << std::endl;
+
+    // Allocate context on the heap
+    NexusCtxt* ai_ctxt = new NexusCtxt();
+
+    // We don't initialize the AI here, we just crete empty pointers
+    ai_ctxt->engine = nullptr;
+    ai_ctxt->tokenizer = nullptr;
+    ai_ctxt->store = nullptr;
+
+    // fuse_main(argc, argv, &operations_struct, PRIVATE_DATA_POINTER)
+    int fuse_stat = fuse_main(argc, argv, &nexus_oper, ai_ctxt);
+
+    // Cleanup when fuse unmounts
+    delete ai_ctxt->engine;
+    delete ai_ctxt->store;
+    delete ai_ctxt->tokenizer;
+    delete ai_ctxt;
+
+    return fuse_stat;
 }

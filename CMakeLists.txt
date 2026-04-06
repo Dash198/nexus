@@ -8,27 +8,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FUSE REQUIRED fuse3)
 
-# 1. Force the Include Directories (HIGHEST PRIORITY)
-# This ensures we look in /usr/include/fuse3 before /usr/include/fuse
-include_directories(BEFORE ${FUSE_INCLUDE_DIRS})
-
+# Define the executable
 add_executable(nexus src/main.cpp)
 
-# 1. Tell CMake where the ONNX headers are
-target_include_directories(nexus PRIVATE ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include)
+# 1. Target Include Directories (Modern, scoped only to 'nexus')
+target_include_directories(nexus PRIVATE
+    ${FUSE_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include
+)
 
-# 2. Tell CMake where the ONNX library files (.so) are
+# 2. Tell CMake where the ONNX library files (.so) are for linking
 target_link_directories(nexus PRIVATE ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib)
 
-# 3. Link BOTH the ONNX runtime and FUSE libraries to your executable
+# 3. Link the actual libraries
 target_link_libraries(nexus PRIVATE
     onnxruntime
     ${FUSE_LIBRARIES}
 )
 
-# 3. CRITICAL: Add the required compile definitions
-# FUSE requires these to work on 64-bit Linux
-target_compile_definitions(nexus PUBLIC -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=31)
+# 4. CRITICAL: Bake the RPATH into the binary so it doesn't crash at runtime
+target_link_options(nexus PRIVATE "-Wl,-rpath=${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib")
 
-# Add standard FUSE flags
+# 5. FUSE specific compile definitions and options
+target_compile_definitions(nexus PUBLIC -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=31)
 target_compile_options(nexus PUBLIC ${FUSE_CFLAGS})
