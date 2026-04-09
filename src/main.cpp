@@ -22,11 +22,13 @@
 #include "embedder.hpp"
 #include "tokenizer/tokenizer.hpp"
 #include "db/vector_store.hpp"
+#include "search_cache.hpp"
 
 struct NexusCtxt{
     Tokenizer* tokenizer;
     ModelEngine* engine;
     VectorStore* store;
+    SearchCache* cache;
 
     std::string model_path = "/home/devansh/repos/nexus/models/all-MiniLM-L6-v2.onnx";
 };
@@ -40,9 +42,6 @@ std::unordered_map<std::string, std::string> global_map = {
     {"/status", "NEXUS Core: ONLINE\n"},
     {"/time", "actually time size will come from our cache, this is just a placeholder :)"}
 };
-
-// Dynamic cache, stores ghost directories to generate search results for (only cat for now)
-std::unordered_map<std::string, std::string> dynamic_cache;
 
 // Helper function to generate system time.
 std::string generate_time_string(){
@@ -67,6 +66,11 @@ std::string generate_search_result(std::string query){
 
     std::replace(query.begin(), query.end(), '_', ' ');
 
+    std::string cache_result = ctxt->cache->get(query);
+    if(cache_result!=""){
+     return cache_result;
+    }
+
     std::stringstream ss;
     ss << "Search Results:\n\n";
 
@@ -85,7 +89,12 @@ std::string generate_search_result(std::string query){
     }
 
     ss << "\n";
-    return ss.str();
+    // If the store is empty, set threshold to -2.0f so ANY new file kills the cache
+    float threshold = results.empty() ? -2.0f : 0.0f;
+
+    std::string final_output = ss.str();
+    ctxt->cache->put(query, embedding, final_output, results, threshold);
+    return final_output;
 }
 
 // Run once, when the filesystem is mounted.
@@ -107,6 +116,7 @@ static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
     ctxt->engine = new ModelEngine(ctxt->model_path);
     ctxt->store = new VectorStore();
     ctxt->store->load_from_disk();
+    ctxt->cache = new SearchCache(50);
 
     std::cout << "[NEXUS] AI Engine Booted!" << std::endl;
 
@@ -140,8 +150,7 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
         stbuf->st_mtime = now;
         stbuf->st_ctime = now;
         if(std::string(path) == "/time"){
-            dynamic_cache[path] = generate_time_string();
-            stbuf->st_size = dynamic_cache[path].length();
+            stbuf->st_size = generate_time_string().length();
         }
         return 0;
      }
@@ -170,11 +179,8 @@ int nexus_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *f
          stbuf->st_atime = now;
          stbuf->st_mtime = now;
          stbuf->st_ctime = now;
-         if (dynamic_cache.find(path) == dynamic_cache.end()) {
-             dynamic_cache[path] = generate_search_result(path_str.substr(8));
-         }
-         stbuf->st_size = dynamic_cache[path].length();
-         stbuf->st_size = dynamic_cache[path].length();
+         std::string query = path_str.substr(8);
+         stbuf->st_size = generate_search_result(query).length();
          return 0;
      }
 
@@ -309,7 +315,7 @@ int nexus_read(const char *path, char *buff, size_t size, off_t offset, struct f
         std::string msg = global_map[std::string(path)];
 
         if(std::string(path) == "/time"){
-            msg = dynamic_cache[path];
+            msg = generate_time_string();
         }
 
         if(offset >= msg.length()){
@@ -326,7 +332,7 @@ int nexus_read(const char *path, char *buff, size_t size, off_t offset, struct f
 
     // Similar procedure for searching.
     if(path_str.starts_with("/search/") && path_str.length()>8){
-        std::string msg = dynamic_cache[path];
+        std::string msg = generate_search_result(path_str.substr(8));
         if(offset >= msg.length()){
             return 0;
         }
@@ -366,7 +372,9 @@ int nexus_release(const char *path, struct fuse_file_info *fi){
      *  fi: Info about the file
      */
 
-    (void) fi; // We don't even need the fd anymore!
+    if(fi->fh!=-1){
+        close(fi->fh);
+    }
     struct NexusCtxt *ctxt = NEXUS_DATA;
 
     std::string final_path = "/home/devansh/repos/nexus/nexus_data" + std::string(path);
@@ -542,6 +550,7 @@ int main(int argc, char *argv[]) {
     ai_ctxt->engine = nullptr;
     ai_ctxt->tokenizer = nullptr;
     ai_ctxt->store = nullptr;
+    ai_ctxt->cache = nullptr;
 
     // fuse_main(argc, argv, &operations_struct, PRIVATE_DATA_POINTER)
     int fuse_stat = fuse_main(argc, argv, &nexus_oper, ai_ctxt);
@@ -550,6 +559,7 @@ int main(int argc, char *argv[]) {
     delete ai_ctxt->engine;
     delete ai_ctxt->store;
     delete ai_ctxt->tokenizer;
+    delete ai_ctxt->cache;
     delete ai_ctxt;
 
     return fuse_stat;
