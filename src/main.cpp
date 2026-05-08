@@ -389,7 +389,11 @@ int nexus_release(const char *path, struct fuse_file_info *fi){
         Encoding encoding = ctxt->tokenizer->encode(content);
         std::vector<float> embedding = ctxt->engine->generate_embedding(encoding);
         ctxt->store->upsert(path, embedding);
+
+        ctxt->cache->invalidate_on_edit(path, embedding);
     }
+
+    inFile.close();
     return 0;
 }
 
@@ -475,6 +479,7 @@ int nexus_unlink(const char *path) {
 
     // Remove the path from the vector store
     ctxt->store->remove(path);
+    ctxt->cache->invalidate_on_delete(path);
 
     return 0;
 }

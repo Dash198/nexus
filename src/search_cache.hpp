@@ -118,4 +118,15 @@ public:
         }
 
     }
+
+    void invalidate_on_delete(const std::string& file_path){
+        std::unique_lock lock(rw_lock);
+        if(dependency_matrix.find(file_path) != dependency_matrix.end()){
+            // We must copy the vector because delete_query modifies the matrix!
+            std::vector<std::string> queries_to_kill = dependency_matrix[file_path];
+            for(auto& query: queries_to_kill){
+                delete_query(query);
+            }
+        }
+    }
 };

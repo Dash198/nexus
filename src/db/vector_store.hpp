@@ -9,11 +9,17 @@
 #include <algorithm>
 #include <queue>
 #include <fstream>
+#include <ctime>
+
+typedef struct {
+    std::vector<float> embedding;
+    time_t mtime;
+} embedding_data;
 
 class VectorStore {
 private:
     // The RAM Cache: Maps an absolute filepath to its 384-dimensional vector
-    std::unordered_map<std::string, std::vector<float>> cache;
+    std::unordered_map<std::string, embedding_data> cache;
 
     // Private math helper
     float cosine_similarity(const std::vector<float>& vec_a, const std::vector<float>& vec_b){
@@ -41,7 +47,8 @@ public:
 
     // Core CRUD operations for the FUSE hooks later
     void upsert(const std::string& filepath, const std::vector<float>& embedding){
-        cache[filepath] = embedding;
+        time_t now = time(NULL);
+        cache[filepath] = {embedding, now};
     }
     void remove(const std::string& filepath){
         cache.erase(filepath);
@@ -52,7 +59,7 @@ public:
         std::priority_queue<std::pair<float, std::string>> pq;
 
         for(auto &pair: cache){
-            float score = cosine_similarity(query_embedding, pair.second);
+            float score = cosine_similarity(query_embedding, pair.second.embedding);
             pq.push({score, pair.first});
         }
 
@@ -61,7 +68,6 @@ public:
             results.push_back(pq.top().second);
             pq.pop();
         }
-
         return results;
     }
 
@@ -79,9 +85,10 @@ public:
             size_t len = pair.first.size();
             out_file.write(reinterpret_cast<const char*>(&len), sizeof(size_t));
             out_file.write(pair.first.c_str(), len);
-            size_t vec_size = pair.second.size();
+            size_t vec_size = pair.second.embedding.size();
             out_file.write(reinterpret_cast<const char*>(&vec_size), sizeof(size_t));
-            out_file.write(reinterpret_cast<const char*>(pair.second.data()), vec_size * sizeof(float));
+            out_file.write(reinterpret_cast<const char*>(pair.second.embedding.data()), vec_size * sizeof(float));
+            out_file.write(reinterpret_cast<const char*>(&pair.second.mtime), sizeof(time_t));
         }
 
     }
@@ -107,8 +114,9 @@ public:
             in_file.read(reinterpret_cast<char*>(&vec_size), sizeof(size_t));
             std::vector<float> embedding(vec_size);
             in_file.read(reinterpret_cast<char*>(embedding.data()), vec_size*sizeof(float));
-
-            cache[file_path] = embedding;
+            time_t mtime;
+            in_file.read(reinterpret_cast<char*>(&mtime), sizeof(time_t));
+            cache[file_path] = {embedding, mtime};
         }
     }
 };
