@@ -561,6 +561,11 @@ int main(int argc, char *argv[]) {
     int fuse_stat = fuse_main(argc, argv, &nexus_oper, ai_ctxt);
 
     // Cleanup when fuse unmounts
+
+    if(ai_ctxt->store != nullptr){
+        ai_ctxt->store->save_to_disk();
+    }
+
     delete ai_ctxt->engine;
     delete ai_ctxt->store;
     delete ai_ctxt->tokenizer;

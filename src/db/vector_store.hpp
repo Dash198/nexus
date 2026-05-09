@@ -54,6 +54,18 @@ public:
         cache.erase(filepath);
     }
 
+    // Helper function to check if path exists in store
+    bool contains(const std::string path){
+        if(cache.find(path) == cache.end())
+            return false;
+        return true;
+    }
+
+    // Assuming path exists, get last modified time
+    time_t get_mtime(const std::string path){
+        return cache[path].mtime;
+    }
+
     // The actual search engine
     std::vector<std::string> search(const std::vector<float>& query_embedding, int top_k = 5){
         std::priority_queue<std::pair<float, std::string>> pq;
@@ -72,9 +84,8 @@ public:
     }
 
     void save_to_disk(){
-        std::ofstream out_file("vector_store.bin", std::ios::out | std::ios::binary);
-
-        if(!out_file.is_open()){
+        std::string db_path = "/home/devansh/repos/nexus/vector_store.bin";
+        std::ofstream out_file(db_path, std::ios::out | std::ios::binary);        if(!out_file.is_open()){
             std::cerr << "[NEXUS] Error opening file for writing\n";
         }
 
@@ -94,7 +105,8 @@ public:
     }
 
     void load_from_disk(){
-        std::ifstream in_file("vector_store.bin", std::ios::in | std::ios::binary);
+        std::string db_path = "/home/devansh/repos/nexus/vector_store.bin";
+        std::ifstream in_file(db_path, std::ios::in | std::ios::binary);
         if(!in_file.is_open()){
             std::cout << "[NEXUS] No previous memory found. Starting fresh.\n";
             return; // <--- This saves the daemon!
