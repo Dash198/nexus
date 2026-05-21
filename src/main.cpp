@@ -18,6 +18,8 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <unordered_set>
+#include <thread>
 
 #include "embedder.hpp"
 #include "tokenizer/tokenizer.hpp"
@@ -97,6 +99,73 @@ std::string generate_search_result(std::string query){
     return final_output;
 }
 
+void sync_drive(std::string path, NexusCtxt *ctxt, std::unordered_set<std::string>& found_files){
+    DIR *dir = opendir(path.c_str());
+    if(dir==nullptr) return;
+
+    VectorStore *store = ctxt->store;
+
+    struct dirent *entry;
+    struct stat buf;
+    while((entry=readdir(dir))!=NULL){
+        if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        if(entry->d_type == DT_REG){
+            std::string full_path = path + "/" + entry->d_name;
+            lstat(full_path.c_str(), &buf);
+
+            // 2. Strip the base directory to match the FUSE ledger!
+            std::string base_dir = "/home/devansh/repos/nexus/nexus_data";
+            std::string fuse_path = full_path.substr(base_dir.length());
+
+            // 3. Insert the FUSE path, not the absolute path
+            found_files.insert(fuse_path);
+
+            // 4. Query the store using the FUSE path
+            if(!store->contains(fuse_path) || buf.st_mtime > store->get_mtime(fuse_path)){
+                std::ifstream inFile(full_path);
+
+                std::stringstream buffer;
+                buffer << inFile.rdbuf();
+                std::string content = buffer.str();
+
+                if(!content.empty()){
+                    Encoding encoding = ctxt->tokenizer->encode(content);
+                    std::vector<float> embedding = ctxt->engine->generate_embedding(encoding);
+
+                    bool is_mutant = store->contains(fuse_path);
+
+                    store->upsert(fuse_path, embedding);
+
+                    if(is_mutant){
+                        ctxt->cache->invalidate_on_edit(fuse_path, embedding);
+                    }
+                }
+            }
+        }
+        else if(entry->d_type == DT_DIR){
+            sync_drive(path+"/"+entry->d_name, ctxt, found_files);
+        }
+    }
+    closedir(dir);
+}
+
+void remove_invalid(NexusCtxt *ctxt, std::unordered_set<std::string>& found_files){
+    std::vector<std::string> ctxt_files = ctxt->store->get_all_paths();
+    for(const auto &path: ctxt_files){
+        if(!found_files.contains(path)){
+            ctxt->store->remove(path);
+            ctxt->cache->invalidate_on_delete(path);
+        }
+    }
+}
+
+void background_sweeper(NexusCtxt *ctxt){
+    std::unordered_set<std::string> found_files;
+    sync_drive("/home/devansh/repos/nexus/nexus_data", ctxt, found_files);
+    remove_invalid(ctxt, found_files);
+}
+
 // Run once, when the filesystem is mounted.
 static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
     /*
@@ -119,6 +188,9 @@ static void* nexus_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
     ctxt->cache = new SearchCache(50);
 
     std::cout << "[NEXUS] AI Engine Booted!" << std::endl;
+
+    std::thread sweeper(background_sweeper,ctxt);
+    sweeper.detach();
 
     return NEXUS_DATA;
 }

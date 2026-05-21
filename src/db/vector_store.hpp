@@ -10,6 +10,8 @@
 #include <queue>
 #include <fstream>
 #include <ctime>
+#include <shared_mutex>
+#include <mutex>
 
 typedef struct {
     std::vector<float> embedding;
@@ -20,6 +22,9 @@ class VectorStore {
 private:
     // The RAM Cache: Maps an absolute filepath to its 384-dimensional vector
     std::unordered_map<std::string, embedding_data> cache;
+
+    // Mutex lock (for threading step)
+    mutable std::shared_mutex rw_lock;
 
     // Private math helper
     float cosine_similarity(const std::vector<float>& vec_a, const std::vector<float>& vec_b){
@@ -47,15 +52,30 @@ public:
 
     // Core CRUD operations for the FUSE hooks later
     void upsert(const std::string& filepath, const std::vector<float>& embedding){
+        std::unique_lock<std::shared_mutex> lock(rw_lock);
         time_t now = time(NULL);
         cache[filepath] = {embedding, now};
     }
+
     void remove(const std::string& filepath){
+        std::unique_lock<std::shared_mutex> lock(rw_lock);
         cache.erase(filepath);
+    }
+
+    std::vector<std::string> get_all_paths(){
+        std::shared_lock<std::shared_mutex> lock(rw_lock);
+
+        std::vector<std::string> paths;
+        for(auto const &pair: cache){
+            paths.push_back(pair.first);
+        }
+
+        return paths;
     }
 
     // Helper function to check if path exists in store
     bool contains(const std::string path){
+        std::shared_lock<std::shared_mutex> lock(rw_lock);
         if(cache.find(path) == cache.end())
             return false;
         return true;
@@ -63,11 +83,13 @@ public:
 
     // Assuming path exists, get last modified time
     time_t get_mtime(const std::string path){
+        std::shared_lock<std::shared_mutex> lock(rw_lock);
         return cache[path].mtime;
     }
 
     // The actual search engine
     std::vector<std::string> search(const std::vector<float>& query_embedding, int top_k = 5){
+        std::shared_lock<std::shared_mutex> lock(rw_lock);
         std::priority_queue<std::pair<float, std::string>> pq;
 
         for(auto &pair: cache){
@@ -84,6 +106,7 @@ public:
     }
 
     void save_to_disk(){
+        std::unique_lock<std::shared_mutex> lock(rw_lock);
         std::string db_path = "/home/devansh/repos/nexus/vector_store.bin";
         std::ofstream out_file(db_path, std::ios::out | std::ios::binary);        if(!out_file.is_open()){
             std::cerr << "[NEXUS] Error opening file for writing\n";
@@ -105,6 +128,7 @@ public:
     }
 
     void load_from_disk(){
+        std::unique_lock<std::shared_mutex> lock(rw_lock);
         std::string db_path = "/home/devansh/repos/nexus/vector_store.bin";
         std::ifstream in_file(db_path, std::ios::in | std::ios::binary);
         if(!in_file.is_open()){
