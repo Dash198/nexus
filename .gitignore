@@ -1,4 +1,5 @@
 nexus_data
+vecfs_data
 build/
 third_party/
 models/
