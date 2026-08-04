@@ -13,6 +13,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../hnswlib/hnswlib.h"
+
 // Embedding struct for syncing purposes
 typedef struct {
   std::vector<float> embedding;
@@ -26,6 +28,11 @@ private:
 
   // Mutex lock for threading
   mutable std::shared_mutex rw_lock;
+
+  hnswlib::InnerProductSpace *space;
+  hnswlib::HierarchicalNSW<float> *alg_hsnw;
+
+  int hnsw_dims = 384;
 
   // Cosine Sim function
   float cosine_similarity(const std::vector<float> &vec_a,
@@ -49,7 +56,8 @@ private:
   }
 
 public:
-  VectorStore() = default;
+  VectorStore() { space = new hnswlib::InnerProductSpace() }
+
   ~VectorStore() = default;
 
   // Insert an embedding into the store
