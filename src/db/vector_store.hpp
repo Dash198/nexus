@@ -19,6 +19,7 @@
 typedef struct {
   std::vector<float> embedding;
   time_t mtime;
+  int id;
 } embedding_data;
 
 class VectorStore {
@@ -26,11 +27,15 @@ private:
   // Cache of the vector store
   std::unordered_map<std::string, embedding_data> cache;
 
+  int current_id = 0;
+  std::unordered_map<std::string, int> path_to_id;
+  std::unordered_map<int, std::string> id_to_path;
+
   // Mutex lock for threading
   mutable std::shared_mutex rw_lock;
 
   hnswlib::InnerProductSpace *space;
-  hnswlib::HierarchicalNSW<float> *alg_hsnw;
+  hnswlib::HierarchicalNSW<float> *alg_hnsw;
 
   int hnsw_dims = 384;
 
@@ -56,7 +61,11 @@ private:
   }
 
 public:
-  VectorStore() { space = new hnswlib::InnerProductSpace() }
+  VectorStore() {
+    space = new hnswlib::InnerProductSpace(hnsw_dims);
+
+    alg_hnsw = new hnswlib::HierarchicalNSW<float>(space, 10000, 16, 200);
+  }
 
   ~VectorStore() = default;
 
@@ -65,13 +74,25 @@ public:
               const std::vector<float> &embedding) {
     std::unique_lock<std::shared_mutex> lock(rw_lock);
     time_t now = time(NULL);
-    cache[filepath] = {embedding, now};
+
+    int id;
+
+    if (path_to_id.find(filepath) != path_to_id.end()) {
+      id = path_to_id[filepath];
+    } else {
+      id = current_id++;
+      id_to_path[id] = filepath;
+      path_to_id[filepath] = id;
+    }
+    alg_hnsw->addPoint(embedding.data(), id);
+    cache[filepath] = {embedding, now, id};
   }
 
   // Remove an embedding
   void remove(const std::string &filepath) {
     std::unique_lock<std::shared_mutex> lock(rw_lock);
     cache.erase(filepath);
+    alg_hnsw->markDelete(path_to_id[filepath]);
   }
 
   // Get all the paths in the store
@@ -113,9 +134,19 @@ public:
 
     std::vector<std::string> results;
     for (int i = 0; i < top_k && !pq.empty(); i++) {
-      results.push_back(pq.top().second);
+      // results.push_back(pq.top().second);
       pq.pop();
     }
+
+    auto hnsw_results = alg_hnsw->searchKnn(query_embedding.data(), top_k);
+
+    while (!hnsw_results.empty()) {
+      int id = hnsw_results.top().second;
+      results.push_back(id_to_path[id]);
+      hnsw_results.pop();
+    }
+
+    std::reverse(results.begin(), results.end());
     return results;
   }
 
@@ -148,7 +179,11 @@ public:
           vec_size * sizeof(float));
       out_file.write(reinterpret_cast<const char *>(&pair.second.mtime),
                      sizeof(time_t));
+      out_file.write(reinterpret_cast<const char *>(&pair.second.id),
+                     sizeof(int));
     }
+
+    alg_hnsw->saveIndex("/home/devansh/repos/nexus/hnsw_index.bin");
   }
 
   // Load all entries from the disk
@@ -185,7 +220,19 @@ public:
                    vec_size * sizeof(float));
       time_t mtime;
       in_file.read(reinterpret_cast<char *>(&mtime), sizeof(time_t));
-      cache[file_path] = {embedding, mtime};
+      int id;
+      in_file.read(reinterpret_cast<char *>(&id), sizeof(int));
+      cache[file_path] = {embedding, mtime, id};
+
+      path_to_id[file_path] = id;
+      id_to_path[id] = file_path;
+
+      if (id >= current_id)
+        current_id = id + 1;
     }
+
+    delete alg_hnsw;
+    alg_hnsw = new hnswlib::HierarchicalNSW<float>(
+        space, "/home/devansh/repos/nexus/hnsw_index.bin");
   }
 };

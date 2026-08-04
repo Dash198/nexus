@@ -3,6 +3,7 @@ nexus: \
   /usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/../../../../lib/crti.o \
   /usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/crtbeginS.o \
   CMakeFiles/nexus.dir/src/main.cpp.o \
+  CMakeFiles/nexus.dir/src/stb_image.cpp.o \
   /home/devansh/repos/nexus/third_party/onnxruntime/lib/libonnxruntime.so \
   /usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/../../../../lib/libfuse3.so \
   /usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/../../../../lib/libpthread.a \
@@ -51,6 +52,8 @@ nexus: \
 /usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/crtbeginS.o:
 
 CMakeFiles/nexus.dir/src/main.cpp.o:
+
+CMakeFiles/nexus.dir/src/stb_image.cpp.o:
 
 /home/devansh/repos/nexus/third_party/onnxruntime/lib/libonnxruntime.so:
 

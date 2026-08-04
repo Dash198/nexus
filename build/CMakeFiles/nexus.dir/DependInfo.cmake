@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/devansh/repos/nexus/src/main.cpp" "CMakeFiles/nexus.dir/src/main.cpp.o" "gcc" "CMakeFiles/nexus.dir/src/main.cpp.o.d"
+  "/home/devansh/repos/nexus/src/stb_image.cpp" "CMakeFiles/nexus.dir/src/stb_image.cpp.o" "gcc" "CMakeFiles/nexus.dir/src/stb_image.cpp.o.d"
   "" "nexus" "gcc" "CMakeFiles/nexus.dir/link.d"
   )
 

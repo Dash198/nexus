@@ -2,6 +2,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/nexus.dir/link.d"
   "CMakeFiles/nexus.dir/src/main.cpp.o"
   "CMakeFiles/nexus.dir/src/main.cpp.o.d"
+  "CMakeFiles/nexus.dir/src/stb_image.cpp.o"
+  "CMakeFiles/nexus.dir/src/stb_image.cpp.o.d"
   "nexus"
   "nexus.pdb"
 )

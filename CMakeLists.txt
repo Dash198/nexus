@@ -9,7 +9,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FUSE REQUIRED fuse3)
 
 # Define the executable
-add_executable(nexus src/main.cpp)
+add_executable(nexus src/main.cpp src/stb_image.cpp)
 
 # 1. Target Include Directories (Modern, scoped only to 'nexus')
 target_include_directories(nexus PRIVATE

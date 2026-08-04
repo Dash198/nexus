@@ -27,7 +27,7 @@
 
 struct VecCtxt {
   Tokenizer *tokenizer;
-  ModelEngine *engine;
+  VecFSEngine *engine;
   VectorStore *store;
   SearchCache *cache;
 
@@ -177,6 +177,7 @@ void sync_drive(std::string path, VecCtxt *ctxt,
             std::vector<float> norm_img = normalize_image(resized_image);
 
             // TODO: Call Embedder
+            embedding = ctxt->engine->generate_image_embedding(norm_img);
           }
           bool is_mutant = store->contains(fuse_path);
 
@@ -236,7 +237,7 @@ static void *vec_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   // Initialize the AI components
   struct VecCtxt *ctxt = VEC_DATA;
   ctxt->tokenizer = new Tokenizer();
-  ctxt->engine = new ModelEngine(ctxt->model_path);
+  ctxt->engine = new VecFSEngine(ctxt->model_path);
   ctxt->store = new VectorStore();
   ctxt->store->load_from_disk();
   ctxt->cache = new SearchCache(50);
@@ -529,7 +530,7 @@ int vec_release(const char *path, struct fuse_file_info *fi) {
 
   if (!content.empty()) {
     std::vector<float> embedding;
-    enum FileType file_type = detect_file_type(full_path);
+    enum FileType file_type = detect_file_type(final_path);
 
     if (file_type == TEXT) {
       Encoding encoding = ctxt->tokenizer->encode(content);
@@ -537,12 +538,13 @@ int vec_release(const char *path, struct fuse_file_info *fi) {
     } else if (file_type == IMAGE) {
       int w, h;
       std::vector<unsigned char> processed_image =
-          process_image(full_path, w, h);
+          process_image(final_path, w, h);
       std::vector<unsigned char> resized_image =
           resize_image(processed_image.data(), w, h);
       std::vector<float> norm_img = normalize_image(resized_image);
 
       // TODO: Call Embedder
+      embedding = ctxt->engine->generate_image_embedding(norm_img);
     }
     ctxt->store->upsert(path, embedding);
 
